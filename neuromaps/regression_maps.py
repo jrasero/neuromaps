@@ -72,10 +72,13 @@ class RegressionMaps(BasePredictiveMaps):
         
         X_data = X.get_fdata()
         
+        #TODO: Add option to include a custom mask image
         mask = np.ones(X.shape[:3], dtype=bool)
-        
         X_masked = X_data[mask].T # Time Points x Voxels
         n_voxels = X_masked.shape[1]
+        
+        # Ensure NaN are zero in the masked data
+        X_masked = np.nan_to_num(X_masked)
         
         
         if self.stratify:
