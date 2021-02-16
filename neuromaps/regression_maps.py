@@ -5,7 +5,7 @@ from joblib import Parallel, delayed
 
 from sklearn.base import clone
 from sklearn.linear_model import LinearRegression
-from sklearn.model_selection import KFold
+from sklearn.model_selection import StratifiedKFold, KFold
 from sklearn.metrics import r2_score
 from nilearn.image import new_img_like
 
@@ -57,8 +57,9 @@ class BasePredictiveMaps():
     
 class RegressionMaps(BasePredictiveMaps):
 
-    def __init__(self, n_splits=5, n_jobs=1, random_state=None, verbose=0):
+    def __init__(self, n_splits=5, stratify=True, n_jobs=1, random_state=None, verbose=0):
         self.n_splits = n_splits
+        self.stratify = stratify
         self.n_jobs = n_jobs
         self.random_state = random_state
         self.verbose = verbose
@@ -75,15 +76,24 @@ class RegressionMaps(BasePredictiveMaps):
         
         X_masked = X_data[mask].T # Time Points x Voxels
         n_voxels = X_masked.shape[1]
+        
+        
+        if self.stratify:
+            # Convert target to bins, so that it can be stratified within the cross-validation
+            y_bin = np.digitize(y, np.quantile(y, q=np.arange(0,1, 0.2)))
+            cv = StratifiedKFold(n_splits=self.n_splits, shuffle=True, random_state=self.random_state)
+        else:
+            # No stratify, so y_bin is y
+            y_bin = y
+            cv = KFold(n_splits=self.n_splits, shuffle=True, random_state=self.random_state)
 
-        cv = KFold(n_splits=self.n_splits, shuffle=True, random_state=self.random_state)
         linReg = LinearRegression()
         
         parallel = Parallel(n_jobs=self.n_jobs, verbose=self.verbose)
 
         results = parallel(delayed(_inverse_reg_cv)(clone(linReg), 
                                                     X_masked, y, train_index, test_index) 
-                           for (train_index, test_index) in cv.split(X_masked,y))
+                           for (train_index, test_index) in cv.split(X_masked, y_bin))
         
         y_pred_voxels, y_true = zip(*results) # Extract multiple returns from the parallel function
         y_pred_voxels = np.row_stack(y_pred_voxels)
